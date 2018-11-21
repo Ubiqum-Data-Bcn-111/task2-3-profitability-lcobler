@@ -9,6 +9,7 @@ library(rpart)
 library(rpart.plot)
 library(randomForest)
 library(plotly)
+library(plot3D)
 
 #download data set
 existing <- read.csv("existingproductattributes2017.2.csv",header=TRUE)
@@ -34,11 +35,15 @@ for (i in 1:(ncol(existing))){
 existing_out <- existing[existing$Volume<6000,]
 boxplot(existing_out$Volume,main="Boxplot of volume",ylab="Volume")
 boxplot(existing$Volume,main="Boxplot of volume",ylab="Volume")
+
 #Product number: no sense in  the analysis
 existing_out$ProductNum <- NULL
 
-#remove waranty that are the same volume and same reviews
-existing_out <- existing_out[-c(35:41),]
+#remove waranty that are the same volume and same reviews/duplicates
+existing_out <-existing_out %>% distinct(Volume, x5StarReviews,x4StarReviews,NegativeServiceReview, #removes the duplicates from variables specified
+                                         .keep_all = TRUE) #keeps the variables
+#OR
+existing_out2 <- existing[!duplicated(existing[,4:17]),]
 
 #Build the correlation matrix
 corr_existing_out <- cor(existing_out[,2:16]) #no include product type
@@ -154,23 +159,11 @@ postResample(predictions_LinearModel, testing$Volume)
 #332.8147633   0.7030515 201.4916643
 plot(testing$Volume,predictions_LinearModel)
 abline (a=0,b=1,col=2)
+
 realErrolm<- (predictions_LinearModel -testing$Volume)/testing$Volume  # to calc %
 realErrolm
 mean(realErrolm) #relative error = 0.3277584
 
-#linear model Positive service review, 4starreviews and productType.PLNS
-#LinearModel2<- lm(Volume ~ PositiveServiceReview+x4StarReviews+ProductType.PLNS, training)
-#summary(LinearModel2)
-# R-squared: 0.8, p-value= < 2.2e-6
-#plot(LinearModel2)
-#48 outlier, similar errors as before
-#prediction test set
-#predictions_LinearModel2 <- predict(LinearModel2,testing)
-#postResample(predictions_LinearModel2, testing$Volume)
-#R squared 0.55 -> OVERFIT
-#plot(testing$Volume,predictions_LinearModel2)
-#abline (a=0,b=1,col=2)
-#linear model not good
 
 #xgbm in caret
 modelLookup("xgbTree") #description parameters to tune
@@ -581,6 +574,33 @@ plot_ly(existing_out, x = ~x4StarReviews, y = ~PositiveServiceReview, z = ~Shipp
                       yaxis = list(title = 'Positive Service Reviews'),
                       zaxis = list(title = 'Shipping Weight')))
 
+
+#code for hyperplane plot regression for two variables
+x <- existing$x4StarReviews
+y <- existing$PositiveServiceReview
+z <- existing$Volume
+
+fit <- lm(z ~ x + y)
+
+grid.lines = 78
+x.pred <- seq(min(x), max(x), length.out = grid.lines)
+y.pred <- seq(min(y), max(y), length.out = grid.lines)
+xy <- expand.grid( x = x.pred, y = y.pred)
+z.pred <- matrix(predict(fit, newdata = xy), 
+                 nrow = grid.lines, ncol = grid.lines)
+# fitted points for droplines to surface
+fitpoints <- predict(fit)
+# scatter plot with regression plane, no interactive
+scatter3D(x, y, z, pch = 18, cex = 2, bty = "g",
+          theta = 30, phi = -20, ticktype = "detailed", #inclination
+          xlab = "4STARS", ylab = "POSREV", zlab = "VOLUME",  
+          surf = list(x = x.pred, y = y.pred, z = z.pred,  
+          facets = NA, fit = fitpoints, main = "LM"))
+
+surfaceplot<-plot_ly(existing,x=~x4StarReviews,y=~PositiveServiceReview,z=~Volume,
+                     type="scatter3d",mode="marker")
+surfaceplot <-add_trace(p=surfaceplot,z=z.pred,x=x.pred,y=y.pred,type="surface")
+surfaceplot
 
 
 ggplot(existing_out, aes(x4StarReviews,PositiveServiceReview,color=Volume))+
